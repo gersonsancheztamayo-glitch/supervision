@@ -132,6 +132,9 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 #v-form .mini{min-height:40px;border:1.5px dashed var(--line);border-radius:10px;background:none;color:var(--brand);font:700 .9rem var(--font);cursor:pointer}
 #v-form .trow.invalid{outline:2px solid var(--danger)}
 #v-form .trow.invalid .tbox.vacio{border-color:var(--danger)}
+#v-form .thd{display:flex}
+#v-form .chain{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;background:var(--ok-soft);color:var(--ok);font:600 .74rem var(--font)}
+#v-form .tbox.auto{border-color:var(--ok);background:var(--ok-soft)}
 #v-form .tools{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 #v-form .tools.solo{grid-template-columns:1fr}
 #v-form .tool{min-height:44px;border-radius:var(--r);font:700 .92rem var(--font);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;padding:0 8px}
@@ -139,8 +142,8 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 #v-form .tool.ia{border:1.5px solid var(--ai);background:var(--ai-soft);color:var(--ai)}
 #v-form .tool:disabled{opacity:.5}
 #v-form .undo{align-self:flex-start;border:0;background:none;color:var(--brand);font:600 .82rem var(--font);text-decoration:underline;cursor:pointer;padding:0}
-#v-form .photos{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-#v-form .ph{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--bg);max-width:100%}
+#v-form .photos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+#v-form .ph{position:relative;aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--bg);max-width:100%}
 #v-form .ph img{width:100%;height:100%;object-fit:cover;display:block}
 #v-form .ph button{position:absolute;top:3px;right:3px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:.85rem;padding:0}
 #v-form .pbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -283,7 +286,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 #v-seg .ph-row{display:flex;align-items:center;gap:10px;margin:10px 0}
 #v-seg .pbtn{min-height:44px;padding:0 14px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font:600 .92rem var(--font);display:inline-flex;align-items:center;gap:6px;cursor:pointer}
 #v-seg .pbtn input{display:none}
-#v-seg .thumb{position:relative;width:56px;height:56px;border-radius:8px;overflow:hidden}
+#v-seg .thumb{position:relative;width:80px;height:60px;border-radius:8px;overflow:hidden}
 #v-seg .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 #v-seg .thumb button{position:absolute;top:2px;right:2px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;padding:0;font-size:.8rem}
 #v-seg .toast{position:fixed;z-index:40;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:10px;font-weight:600;font-size:.92rem;box-shadow:0 8px 22px rgba(0,0,0,.25);max-width:calc(100% - 32px)}
@@ -977,7 +980,26 @@ window.API_URL = "https://script.google.com/macros/s/AKfycbw20GsQDpLDyA-8Uu9v1TS
     return { pintar: pintar };
   }
 
-  window.UI = { combo: combo, hora: hora, texto12: texto12, mejorar: mejorarTodo, fecha: fecha };
+
+  /* Foto de evidencia en formato uniforme 4:3 (1280×960), sin recortar: la foto se centra y el espacio libre queda gris. */
+  function foto43(file, W, H, q){
+    W = W || 1280; H = H || 960; q = q || 0.75;
+    return new Promise(function(res, rej){
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function(){
+        var cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+        var cx = cv.getContext("2d"); cx.fillStyle = "#e6eaf0"; cx.fillRect(0, 0, W, H);
+        var e = Math.min(W / img.width, H / img.height), w = Math.round(img.width * e), h = Math.round(img.height * e);
+        cx.imageSmoothingQuality = "high";
+        cx.drawImage(img, Math.round((W - w) / 2), Math.round((H - h) / 2), w, h);
+        URL.revokeObjectURL(url); res(cv.toDataURL("image/jpeg", q));
+      };
+      img.onerror = function(){ URL.revokeObjectURL(url); rej(new Error("No se pudo leer la foto")); };
+      img.src = url;
+    });
+  }
+
+  window.UI = { combo: combo, hora: hora, texto12: texto12, mejorar: mejorarTodo, fecha: fecha, foto43: foto43 };
 })();
 
 </script>
@@ -1104,7 +1126,14 @@ function readEnc(){ return { orden:$("#orden").value.trim(), fecha:$("#fecha").v
 ROOT.querySelectorAll("[data-step='0'] .field").forEach(el=>el.addEventListener("input",()=>el.closest(".f")?.classList.remove("invalid")));
 
 
-const nuevoTiempo = (canal="") => ({id:nid(), canal, ih:"", im:"", fh:"", fm:"", com:""});
+const nuevoTiempo = (canal="") => ({id:nid(), canal, ih:"", im:"", fh:"", fm:"", com:"", auto:false});
+/* Tiempos en cadena: el inicio de cada tiempo automático sigue al fin del anterior (con cualquier canal). */
+function encadenar(h){ h.tiempos.forEach((t,i)=>{ if(i===0){ t.auto=false; return; } if(t.auto){ const a = h.tiempos[i-1]; t.ih = a.fh; t.im = a.fm; } }); }
+function repintarTiempos(h){
+  const card = ROOT.querySelector(`#halls .card[data-id="${h.id}"]`); const box = card && card.querySelector(".tlist");
+  if(box) box.innerHTML = h.tiempos.map(tiempoHTML).join("");
+  refrescarFila(h);
+}
 const nuevoHall = () => ({id:nid(), momento:"", subcategoria:"", tiempos:[], nota:"", observacion:"", impacto:"", oportunidad:"", fotos:[], undo:null});
 const CLOCK = `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
 const CARET = `<svg class="caret" width="18" height="18" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
@@ -1115,11 +1144,12 @@ function completo(h){
   if(esDemora(h.subcategoria) && !h.tiempos.some(t=>tMin(t)!=null)) return false;
   return h.tiempos.every(t => tMin(t)!=null || (!t.ih&&!t.im&&!t.fh&&!t.fm));
 }
-function tiempoHTML(t){
-  const m = tMin(t);
+function tiempoHTML(t, i){
+  const m = tMin(t), enCadena = t.auto && t.ih!=="";
   return `<div class="trow" data-t="${t.id}">
+    ${enCadena ? `<div class="thd"><span class="chain">🔗 inicia donde terminó el tiempo ${i}</span></div>` : ""}
     <div class="tline2">
-      <button type="button" class="tbox ${t.ih===""?"vacio":""}" data-tb="i" aria-label="Hora de inicio">${UI.texto12(hora(t.ih,t.im))}</button><button type="button" class="clock" data-now="i" aria-label="Hora actual de inicio">${CLOCK}</button>
+      <button type="button" class="tbox ${t.ih===""?"vacio":""} ${enCadena?"auto":""}" data-tb="i" aria-label="Hora de inicio">${UI.texto12(hora(t.ih,t.im))}</button><button type="button" class="clock" data-now="i" aria-label="Hora actual de inicio">${CLOCK}</button>
       <span class="a">a</span>
       <button type="button" class="tbox ${t.fh===""?"vacio":""}" data-tb="f" aria-label="Hora de fin">${UI.texto12(hora(t.fh,t.fm))}</button><button type="button" class="clock" data-now="f" aria-label="Hora actual de fin">${CLOCK}</button>
     </div>
@@ -1133,9 +1163,8 @@ function tiempoHTML(t){
 }
 function ponerHora(h, row, t, p, hhmm){
   const [hh, mm] = hhmm.split(":"); t[p+"h"] = hh; t[p+"m"] = mm;
-  const b = row.querySelector(`[data-tb="${p}"]`); if(b){ b.innerHTML = UI.texto12(hhmm); b.classList.remove("vacio"); }
-  const m = tMin(t); row.querySelector("[data-mins]").textContent = m==null?"—":fmtMin(m); row.classList.remove("invalid");
-  refrescarFila(h); guardarBorrador();
+  if(p==="i") t.auto = false;
+  encadenar(h); repintarTiempos(h); guardarBorrador();
 }
 function filaResumen(h, i){
   const s = SUB_IDX[h.subcategoria], tot = totalMin(h);
@@ -1242,17 +1271,17 @@ $("#halls").addEventListener("click", e=>{
   if(e.target.closest("[data-info]")){ state.verInfo[h.id] = !state.verInfo[h.id]; renderHalls(); return; }
   const del = e.target.closest("[data-del]");
   if(del) return confirmar(del, "Toca otra vez para eliminar", ()=>{ state.halls = state.halls.filter(x=>x!==h); state.open=null; renderHalls(); guardarBorrador(); });
-  if(e.target.closest("[data-addt]")){ h.tiempos.push(nuevoTiempo()); renderHalls(); guardarBorrador(); return; }
+  if(e.target.closest("[data-addt]")){ const t = nuevoTiempo(); t.auto = h.tiempos.length > 0; h.tiempos.push(t); encadenar(h); renderHalls(); guardarBorrador(); return; }
   const tdel = e.target.closest("[data-tdel]");
   if(tdel){ const id = tdel.closest(".trow").dataset.t;
-    return confirmar(tdel, "¿Sí?", ()=>{ h.tiempos = h.tiempos.filter(t=>t.id!==id); renderHalls(); guardarBorrador(); }); }
+    return confirmar(tdel, "¿Sí?", ()=>{ h.tiempos = h.tiempos.filter(t=>t.id!==id); encadenar(h); renderHalls(); guardarBorrador(); }); }
   const now = e.target.closest("[data-now]");
   if(now){ const row = now.closest(".trow"), t = h.tiempos.find(x=>x.id===row.dataset.t), d = new Date();
     ponerHora(h, row, t, now.dataset.now, pad(d.getHours())+":"+pad(d.getMinutes())); return; }
   const tb = e.target.closest("[data-tb]");
   if(tb){ const row = tb.closest(".trow"), t = h.tiempos.find(x=>x.id===row.dataset.t), p = tb.dataset.tb;
     tb.classList.add("on");
-    UI.hora({ raiz: ROOT, titulo: p==="i" ? "Hora de inicio" : "Hora de fin", valor: hora(t[p+"h"], t[p+"m"]),
+    UI.hora({ raiz: ROOT, titulo: p==="i" ? "Hora de inicio" : "Hora de fin", valor: hora(t[p+"h"], t[p+"m"]) || (p==="f" ? hora(t.ih, t.im) : ""),
       alCerrar: ()=>tb.classList.remove("on"), alElegir: v=>ponerHora(h, row, t, p, v) });
     return; }
   const df = e.target.closest("[data-delfoto]");
@@ -1269,16 +1298,7 @@ $("#halls").addEventListener("change", async e=>{
   for(const f of files){ try{ h.fotos.push({name:f.name, data:await comprimir(f)}); }catch(err){} }
   overlay(false); renderHalls();
 });
-function comprimir(file, max=1280, q=0.72){
-  return new Promise((res, rej)=>{
-    const url = URL.createObjectURL(file), img = new Image();
-    img.onload = ()=>{ let {width:w, height:h} = img; const s = Math.min(1, max/Math.max(w,h)); w=Math.round(w*s); h=Math.round(h*s);
-      const cv = document.createElement("canvas"); cv.width=w; cv.height=h; cv.getContext("2d").drawImage(img,0,0,w,h);
-      URL.revokeObjectURL(url); res(cv.toDataURL("image/jpeg", q)); };
-    img.onerror = ()=>{ URL.revokeObjectURL(url); rej(); };
-    img.src = url;
-  });
-}
+function comprimir(file){ return UI.foto43(file); }
 
 
 function contexto(h){
@@ -1609,12 +1629,7 @@ $("#d-body").addEventListener("change", async e=>{
   try{ S.foto = await comprimir(e.target.files[0]); $("#d-thumb").innerHTML = `<span class="thumb"><img src="${S.foto}" alt="Foto de evidencia"><button type="button" id="d-foto-x" aria-label="Quitar foto">×</button></span>`; }catch(err){}
   overlay(false);
 });
-function comprimir(file, max=1280, q=0.72){
-  return new Promise((res, rej)=>{ const url = URL.createObjectURL(file), img = new Image();
-    img.onload = ()=>{ let {width:w, height:h} = img; const s = Math.min(1, max/Math.max(w,h)); w=Math.round(w*s); h=Math.round(h*s);
-      const cv = document.createElement("canvas"); cv.width=w; cv.height=h; cv.getContext("2d").drawImage(img,0,0,w,h); URL.revokeObjectURL(url); res(cv.toDataURL("image/jpeg", q)); };
-    img.onerror = ()=>{ URL.revokeObjectURL(url); rej(); }; img.src = url; });
-}
+function comprimir(file){ return UI.foto43(file); }
 function generarPDF(){
   const r = S.actual, idInf = r["ID Informe"];
   if(!RUN){ toast("Vista previa: aquí se generaría el PDF de la orden"); return; }
